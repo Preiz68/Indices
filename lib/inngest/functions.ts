@@ -59,7 +59,7 @@ export const sendSignUpEmail = inngest.createFunction(
 
 export const sendDailyNewsSummary = inngest.createFunction(
   { id: "daily-news-summary" },
-  [{ event: "app/send.daily.news" }, { cron: " 0 12 * * *" }],
+  [{ event: "app/send.daily.news" }, { cron: "0 12 * * *" }],
   async ({ step }) => {
     // Step #1: Get all users for news delivery
     const users = await step.run("get-all-users", getAllUsersForNewsEmail);
@@ -73,22 +73,34 @@ export const sendDailyNewsSummary = inngest.createFunction(
         user: User;
         articles: MarketNewsArticle[];
       }> = [];
-      for (const user of users as User[]) {
-        try {
-          const symbols = await getWatchlistSymbolsByEmail(user.email);
-          let articles = await getNews(symbols);
-          // Enforce max 6 articles per user
-          articles = (articles || []).slice(0, 6);
-          // If still empty, fallback to general
-          if (!articles || articles.length === 0) {
-            articles = await getNews();
-            articles = (articles || []).slice(0, 6);
+      for (const { user, articles } of results) {
+        const newsContent = await step.run(
+          `summarize-news-${user.id}`,
+          async () => {
+            try {
+              const prompt = NEWS_SUMMARY_EMAIL_PROMPT.replace(
+                "{{newsData}}",
+                JSON.stringify(articles, null, 2)
+              );
+              const response = await step.ai.infer(`ai-summarize-${user.id}`, {
+                model: step.ai.models.gemini({
+                  model: "gemini-2.5-flash-lite",
+                }),
+                body: {
+                  contents: [{ role: "user", parts: [{ text: prompt }] }],
+                },
+              });
+              const part = response.candidates?.[0]?.content?.parts?.[0];
+              return (
+                (part && "text" in part ? part.text : null) || "No market news."
+              );
+            } catch (e) {
+              console.error("Failed to summarize news for:", user.id);
+              return null;
+            }
           }
-          perUser.push({ user, articles });
-        } catch (e) {
-          console.error("daily-news: error preparing user news", user.email, e);
-          perUser.push({ user, articles: [] });
-        }
+        );
+        userNewsSummaries.push({ user, newsContent });
       }
       return perUser;
     });
