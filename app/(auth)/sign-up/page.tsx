@@ -68,7 +68,7 @@ const SignUp = () => {
           name="email"
           label="Email"
           type="email"
-          placeholder="contact@jsmastery.com"
+          placeholder="praise@gmail.com"
           register={register}
           error={errors.email}
           validation={{
