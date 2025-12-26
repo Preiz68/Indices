@@ -1,9 +1,13 @@
-"use server";
+import { POPULAR_STOCK_SYMBOLS } from "@/lib/constants";
+import { cache } from "react";
 
 const MASSIVE_BASE_URL = "https://api.massive.com";
-const MASSIVE_API_KEY = process.env.MASSIVE_API_KEY;
+const MASSIVE_API_KEY = process.env.NEXT_PUBLIC_MASSIVE_API_KEY;
 
-async function fetchJSON(url: string, revalidateSeconds?: number) {
+async function fetchJSON<T>(
+  url: string,
+  revalidateSeconds?: number
+): Promise<T> {
   const options: RequestInit = revalidateSeconds
     ? { cache: "force-cache", next: { revalidate: revalidateSeconds } }
     : { cache: "no-store" };
@@ -12,6 +16,11 @@ async function fetchJSON(url: string, revalidateSeconds?: number) {
   finalUrl.searchParams.set("apiKey", MASSIVE_API_KEY || "");
 
   const response = await fetch(finalUrl.toString(), options);
+  
+  if (response.status === 429) {
+    console.warn(`Massive API rate limit exceeded (429) for URL: ${url}`);
+    return null as T;
+  }
 
   if (!response.ok) {
     throw new Error(
@@ -38,6 +47,24 @@ interface MassiveArticle {
   image_url: string;
 }
 
+interface MassiveTickerResult {
+  ticker: string;
+  name: string;
+  market: string;
+  locale: string;
+  primary_exchange: string;
+  type: string;
+  active: boolean;
+  currency_name: string;
+  last_updated_utc: string;
+}
+
+interface MassiveTickersResponse {
+  results: MassiveTickerResult[];
+  status: string;
+  count: number;
+}
+
 export const getNews = async (symbols?: string[]): Promise<any[]> => {
   try {
     if (!MASSIVE_API_KEY) {
@@ -56,7 +83,10 @@ export const getNews = async (symbols?: string[]): Promise<any[]> => {
         try {
           // Massive v2 news endpoint filtering by ticker
           const url = `${MASSIVE_BASE_URL}/v2/reference/news?ticker=${symbol}&limit=5`;
-          const data = await fetchJSON(url, 3600); // Cache for 1 hour
+          const data = await fetchJSON<{ results: MassiveArticle[] }>(
+            url,
+            3600
+          ); // Cache for 1 hour
           const articles: MassiveArticle[] = data.results || [];
 
           // Find a valid article not already in the list
@@ -90,7 +120,7 @@ export const getNews = async (symbols?: string[]): Promise<any[]> => {
     } else {
       // General market news
       const url = `${MASSIVE_BASE_URL}/v2/reference/news?limit=20`;
-      const data = await fetchJSON(url, 1800); // 30 min cache
+      const data = await fetchJSON<{ results: MassiveArticle[] }>(url, 1800); // 30 min cache
       const articles: MassiveArticle[] = data.results || [];
 
       const seen = new Set();
@@ -119,3 +149,47 @@ export const getNews = async (symbols?: string[]): Promise<any[]> => {
     throw new Error("Failed to fetch news");
   }
 };
+
+export const searchStocks = cache(
+  async (query?: string): Promise<StockWithWatchlistStatus[]> => {
+    try {
+      if (!MASSIVE_API_KEY) {
+        console.error(
+          "Error in stock search:",
+          new Error("MASSIVE API key is not configured")
+        );
+        return [];
+      }
+
+      const trimmed = typeof query === "string" ? query.trim() : "";
+      let results: MassiveTickerResult[] = [];
+
+      if (!trimmed) {
+        // Fetch top 10 recommended/active stocks if no query
+        const url = `${MASSIVE_BASE_URL}/v3/reference/tickers?market=stocks&active=true&limit=10`;
+        const data = await fetchJSON<MassiveTickersResponse | null>(url, 3600);
+        results = data?.results || [];
+      } else {
+        // Search using the query
+        const url = `${MASSIVE_BASE_URL}/v3/reference/tickers?search=${encodeURIComponent(
+          trimmed
+        )}&market=stocks&active=true&limit=15`;
+        const data = await fetchJSON<MassiveTickersResponse | null>(url, 1800);
+        results = data?.results || [];
+      }
+
+      const mapped: StockWithWatchlistStatus[] = results.map((r) => ({
+        symbol: r.ticker.toUpperCase(),
+        name: r.name,
+        exchange: r.primary_exchange || "US",
+        type: r.type || "Stock",
+        isInWatchlist: false,
+      }));
+
+      return mapped;
+    } catch (err) {
+      console.error("Error in stock search:", err);
+      return [];
+    }
+  }
+);
