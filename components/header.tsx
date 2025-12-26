@@ -2,12 +2,14 @@ import Link from "next/link";
 import NavItems from "./NavItems";
 import UserDropdown from "./UserDropdown";
 import Image from "next/image";
+import { searchStocks } from "@/lib/actions/massive.actions";
 
-const Header = ({
+const Header = async ({
   user,
 }: {
   user: { id: string; name: string; email: string };
 }) => {
+  const initialStocks = await searchStocks();
   return (
     <header className="sticky top-0 header">
       <div className="container header-wrapper">
@@ -22,9 +24,9 @@ const Header = ({
           />
         </Link>
         <nav className="hidden sm:block">
-          <NavItems />
+          <NavItems initialStocks={initialStocks} />
         </nav>
-        <UserDropdown user={user} />
+        <UserDropdown user={user} initialStocks={initialStocks} />
       </div>
     </header>
   );
