@@ -2,7 +2,7 @@ import { POPULAR_STOCK_SYMBOLS } from "@/lib/constants";
 import { cache } from "react";
 
 const MASSIVE_BASE_URL = "https://api.massive.com";
-const MASSIVE_API_KEY = process.env.NEXT_PUBLIC_MASSIVE_API_KEY;
+const MASSIVE_API_KEY = process.env.MASSIVE_API_KEY;
 
 async function fetchJSON<T>(
   url: string,
@@ -16,7 +16,7 @@ async function fetchJSON<T>(
   finalUrl.searchParams.set("apiKey", MASSIVE_API_KEY || "");
 
   const response = await fetch(finalUrl.toString(), options);
-  
+
   if (response.status === 429) {
     console.warn(`Massive API rate limit exceeded (429) for URL: ${url}`);
     return null as T;

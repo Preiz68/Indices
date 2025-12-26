@@ -2,9 +2,7 @@
 import {
   CommandDialog,
   CommandEmpty,
-  CommandGroup,
   CommandInput,
-  CommandItem,
   CommandList,
 } from "@/components/ui/command";
 import { Button } from "./ui/button";
@@ -21,7 +19,7 @@ export function SearchCommand({
 }: {
   renderAs?: "button" | "text";
   label?: string;
-  initialStocks?: Stock[];
+  initialStocks?: StockWithWatchlistStatus[];
 }) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -54,6 +52,12 @@ export function SearchCommand({
 
     fetchStocks();
   }, [debouncedSearchTerm, initialStocks]);
+
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setStocks(initialStocks);
+    }
+  }, [initialStocks, searchTerm]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -112,8 +116,8 @@ export function SearchCommand({
                 {isSearchMode ? "Search Results" : "Top Stocks"}(
                 {displayStocks?.length || 0})
               </div>
-              {displayStocks?.map((stock, i) => (
-                <li key={i} className="search-item">
+              {displayStocks?.map((stock) => (
+                <li key={stock.symbol} className="search-item">
                   <Link
                     href={`/stocks/${stock.symbol}`}
                     onClick={() => handleSelectStock(stock.symbol)}
